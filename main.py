@@ -4,11 +4,10 @@ from ArduinoInterface import ArduinoInterface
 import Gauge
 import time
 
-
 def build_primary_window(theme=None):
     sg.theme(theme)
 
-    gauge_size = (200, 100)
+    gauge_size = (450, 250)
     layout_speed = [
         [sg.Graph(gauge_size, (-gauge_size[0] // 2, 0), (gauge_size[0] // 2, gauge_size[1]), key='-SpeedGauge-')],
         [sg.T(size=(12, 1), font='Any 20', justification='c', k="-SpeedGauge-Text-", auto_size_text=True)]]
@@ -47,24 +46,26 @@ def build_primary_window(theme=None):
         [sg.ProgressBar(5, orientation='v', size=(13, 60), style='winnative', key='-Loop-Time-')],
     ])]]
 
-    layout = [[sg.Col(layout_speed, p=0), sg.Col(layout_info, p=0), sg.Col(layout_progress, p=0),
-               sg.Col(layout_direction, p=0), sg.Col(layout_horn, p=0), sg.Col(layout_processor, p=0)]]
+    # layout = [[sg.Col(layout_speed, p=0), sg.Col(layout_info, p=0), sg.Col(layout_progress, p=0),
+    #            sg.Col(layout_direction, p=0), sg.Col(layout_horn, p=0), sg.Col(layout_processor, p=0)]]
+    layout = [[sg.Col(layout_info), sg.Col(layout_progress), sg.Col(layout_direction), sg.Col(layout_horn), sg.Col(layout_processor)], [layout_speed]]
 
     return sg.Window('The PySimpleGUI Element List',
                      layout,
                      finalize=True,
                      right_click_menu=sg.MENU_RIGHT_CLICK_EDITME_VER_EXIT,
-                     keep_on_top=True,)
+                     keep_on_top=True,
+                     size=(1024, 600),
+                     element_justification='c')
                      ##no_titlebar=True, )
     # grab_anywhere=True)
 
 def build_secondary_window(theme=None):
-    sg.theme(theme)
 
     gauge_size = (200, 100)
     layout_speed = [
         [sg.Graph(gauge_size, (-gauge_size[0] // 2, 0), (gauge_size[0] // 2, gauge_size[1]), key='-SpeedGauge-')],
-        [sg.T(size=(12, 1), font='Any 20', justification='c', k="-SpeedGauge-Text-", auto_size_text=True)]]
+        [sg.T(size=(12, 1), font='Any 40', justification='c', k="-SpeedGauge-Text-", auto_size_text=True)]]
 
     layout_info = [[sg.Frame("Motor", [
         [sg.Text("Current: 200amp", size=(17, 1), font='Any 10', justification='c', k="-Motor-AMP-",
@@ -114,10 +115,10 @@ speed_gauge = Gauge.Gauge(pointer_color='red', clock_color=sg.theme_text_color()
                           major_tick_color=sg.theme_text_color(),
                           minor_tick_color=sg.theme_input_background_color(),
                           pointer_outer_color=sg.theme_text_color(),
-                          major_tick_start_radius=80,
-                          minor_tick_start_radius=80, minor_tick_stop_radius=100, major_tick_stop_radius=100,
-                          major_tick_step=30,
-                          clock_radius=100, pointer_line_width=3, pointer_inner_radius=10, pointer_outer_radius=100,
+                          major_tick_start_radius=160,
+                          minor_tick_start_radius=160, minor_tick_stop_radius=200, major_tick_stop_radius=200,
+                          major_tick_step=(180//5),
+                          clock_radius=200, pointer_line_width=3, pointer_inner_radius=10, pointer_outer_radius=200,
                           graph_elem=window_primary['-SpeedGauge-'])
 
 speed_gauge.change(degree=0)
@@ -186,7 +187,7 @@ if not debug:
     import RPi.GPIO as GPIO
 
     # Setup GPIO Pins
-    GPIO.setmode(GPIO.BCM)
+    GPIO.setmode(GPIO.BOARD)
     GPIO.setwarnings(False)
 
     # Define Voltage Pins for direction
@@ -227,7 +228,7 @@ last_time = time.time()
 
 update_period = 0.1
 
-current_degree = 0
+current_speed = 0
 
 # 0 - Unknown/Unset
 # 1 - Force Forward
@@ -267,7 +268,15 @@ while True:
                 kartHornState = True
 
             window_primary["-SpeedGauge-Text-"].update(str(int(arduino_interface.get_speed())) + "MPH")
-            speed_gauge.change(degree=((arduino_interface.get_speed() / 35.0) * 180))
+            speed_gauge.change(degree=((arduino_interface.get_speed() / 40.0) * 180))
+
+        window_primary["-SpeedGauge-Text-"].update(str(current_speed) + " MPH")
+        speed_gauge.change(degree=(current_speed / 40) * 180.0)
+
+        current_speed = int(((time.time_ns() - last_loop_time) / 1_000_000) * 20)
+
+        if current_speed > 40:
+            current_speed = 0
 
         window_primary["-Loop-Time-"].update((time.time_ns() - last_loop_time) / 1_000_000)
 
@@ -303,14 +312,14 @@ while True:
 
             window_primary["-Reverse-"].update(disabled=True)
             window_primary["-Forward-"].update(disabled=False)
-        elif event == "-Reverse-" and (kartDirectionState != 2 or kartDirectionState != 1 or kartDirectionState != 4):
+        elif event == "-Reverse-" and kartDirectionState != 2 and kartDirectionState != 1 and kartDirectionState != 4:
             kartDirectionState = 4
             GPIO.output(reverseControlRelayPin, GPIO.HIGH)
             GPIO.output(forwardControlRelayPin, GPIO.LOW)
 
             window_primary["-Reverse-"].update(disabled=True)
             window_primary["-Forward-"].update(disabled=False)
-        elif event == "-Forward-" and (kartDirectionState != 2 or kartDirectionState != 1 or kartDirectionState != 3):
+        elif event == "-Forward-" and kartDirectionState != 2 and kartDirectionState != 1 and kartDirectionState != 3:
             kartDirectionState = 3
             GPIO.output(reverseControlRelayPin, GPIO.LOW)
             GPIO.output(forwardControlRelayPin, GPIO.HIGH)

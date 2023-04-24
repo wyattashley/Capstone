@@ -99,15 +99,15 @@ class Gauge:
         """
 
         def __init__(self,  center_x=0, center_y=0, start_radius=90, stop_radius=100,
-                     start_angle=0, stop_angle=360, step=6, line_color='black', line_width=2, graph_elem=None):
+                     start_angle=0, stop_angle=360, step=6, line_color='black', line_width=2, graph_elem=None, drawText=False, maxValue=40):
             self.all = [center_x, center_y, start_radius, stop_radius,
                         start_angle, stop_angle, step, line_color, line_width]
             self.figure = []
             self.graph_elem = graph_elem
 
-            self.new()
+            self.new(drawText=drawText, maxValue=maxValue)
 
-        def new(self):
+        def new(self, drawText, maxValue):
             """
             Draw ticks on clock
             """
@@ -115,7 +115,11 @@ class Gauge:
              line_color, line_width) = self.all
 
             start_angle, stop_angle = (180 - start_angle, 180 - stop_angle) if stop_angle < start_angle else (180 - stop_angle, 180 - start_angle)
+            intervalValue = maxValue / ((stop_angle - start_angle) / step)
 
+            print(intervalValue)
+
+            tmp = 0
             for i in range(start_angle, stop_angle + 1, step):
                 start_x = x + start_radius * math.cos(i / 180 * math.pi)
                 start_y = y + start_radius * math.sin(i / 180 * math.pi)
@@ -123,6 +127,11 @@ class Gauge:
                 stop_y = y + stop_radius * math.sin(i / 180 * math.pi)
                 self.figure.append(self.graph_elem.DrawLine((start_x, start_y),
                                                             (stop_x, stop_y), color=line_color, width=line_width))
+                if drawText:
+                    text_x = x + (stop_radius + 15) * math.cos(i / 180 * math.pi)
+                    text_y = y + (stop_radius + 15) * math.sin(i / 180 * math.pi)
+                    self.figure.append(self.graph_elem.draw_text(str(maxValue - int(intervalValue * tmp)), (text_x, text_y), font='Any 15'))
+                    tmp += 1
 
         def move(self, delta_x, delta_y):
             """
@@ -139,14 +148,14 @@ class Gauge:
     All angles defined as count clockwise from negative x-axis.
     Should create instance of clock, pointer, minor tick and major tick first.
     """
-    def __init__(self, center=(0, 0), start_angle=0, stop_angle=180, major_tick_width=5, minor_tick_width=2,major_tick_start_radius=90, major_tick_stop_radius=100, major_tick_step=30, clock_radius=100, pointer_line_width=5, pointer_inner_radius=10, pointer_outer_radius=75, pointer_color='white', pointer_origin_color='black', pointer_outer_color='white', pointer_angle=0, degree=0, clock_color='white', major_tick_color='black', minor_tick_color='black', minor_tick_start_radius=90, minor_tick_stop_radius=100, graph_elem=None):
-
-        self.clock = Gauge.Clock(start_angle=start_angle, stop_angle=stop_angle, fill_color=clock_color, radius=clock_radius, graph_elem=graph_elem)
-        self.minor_tick = Gauge.Tick(start_angle=start_angle, stop_angle=stop_angle, line_width=minor_tick_width, line_color=minor_tick_color, start_radius=minor_tick_start_radius, stop_radius=minor_tick_stop_radius, graph_elem=graph_elem)
-        self.major_tick = Gauge.Tick(start_angle=start_angle, stop_angle=stop_angle, line_width=major_tick_width, start_radius=major_tick_start_radius, stop_radius=major_tick_stop_radius, step=major_tick_step, line_color=major_tick_color, graph_elem=graph_elem)
-        self.pointer = Gauge.Pointer(angle=pointer_angle, inner_radius=pointer_inner_radius, outer_radius=pointer_outer_radius, pointer_color=pointer_color, outer_color=pointer_outer_color, origin_color=pointer_origin_color, line_width=pointer_line_width, graph_elem=graph_elem)
-
+    def __init__(self, center=(0, 10), start_angle=0, stop_angle=180, major_tick_width=5, minor_tick_width=2,major_tick_start_radius=90, major_tick_stop_radius=100, major_tick_step=30, minor_tick_step=4, clock_radius=100, pointer_line_width=5, pointer_inner_radius=10, pointer_outer_radius=75, pointer_color='white', pointer_origin_color='black', pointer_outer_color='white', pointer_angle=0, degree=0, clock_color='white', major_tick_color='black', minor_tick_color='black', minor_tick_start_radius=90, minor_tick_stop_radius=100, graph_elem=None):
         self.center_x, self.center_y = self.center = center
+
+        self.clock = Gauge.Clock(center_y=self.center_y, start_angle=start_angle, stop_angle=stop_angle, fill_color=clock_color, radius=clock_radius, graph_elem=graph_elem)
+        self.minor_tick = Gauge.Tick(center_y=self.center_y, start_angle=start_angle, stop_angle=stop_angle, line_width=minor_tick_width, line_color=minor_tick_color, step=minor_tick_step, start_radius=minor_tick_start_radius, stop_radius=minor_tick_stop_radius, graph_elem=graph_elem)
+        self.major_tick = Gauge.Tick(center_y=self.center_y, start_angle=start_angle, stop_angle=stop_angle, line_width=major_tick_width, start_radius=major_tick_start_radius, stop_radius=major_tick_stop_radius, step=major_tick_step, line_color=major_tick_color, graph_elem=graph_elem, drawText=True)
+        self.pointer = Gauge.Pointer(center_y=self.center_y, angle=pointer_angle, inner_radius=pointer_inner_radius, outer_radius=pointer_outer_radius, pointer_color=pointer_color, outer_color=pointer_outer_color, origin_color=pointer_origin_color, line_width=pointer_line_width, graph_elem=graph_elem)
+
         self.degree = degree
         self.dx = self.dy = 1
 
