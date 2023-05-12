@@ -1,10 +1,9 @@
 import serial
 import threading
 
-
 class ArduinoInterface:
 
-    def get_sensor_distance(self):
+    def get_sensor_distances(self):
         self.check.acquire()
         returner = self.sensor_distances
         self.check.release()
@@ -25,11 +24,11 @@ class ArduinoInterface:
             data = line.split(',')
 
             self.check.acquire()
-            self.speed = float(data[0])
+            self.speed = float(data[0]) / 1.46666667
 
             self.sensor_distances.clear()
             for i in range(0, len(data) - 1):
-                self.sensor_distances.append(float(data[i + 1]))
+                self.sensor_distances.append(int(float(data[i + 1])))
 
             self.check.release()
 

@@ -3,6 +3,8 @@ from Shunt import Shunt
 from ArduinoInterface import ArduinoInterface
 import Gauge
 import time
+import PinoutMap
+from pygame import mixer
 
 def build_primary_window(theme=None):
     sg.theme(theme)
@@ -46,9 +48,12 @@ def build_primary_window(theme=None):
         [sg.ProgressBar(5, orientation='v', size=(13, 60), style='winnative', key='-Loop-Time-')],
     ])]]
 
-    # layout = [[sg.Col(layout_speed, p=0), sg.Col(layout_info, p=0), sg.Col(layout_progress, p=0),
-    #            sg.Col(layout_direction, p=0), sg.Col(layout_horn, p=0), sg.Col(layout_processor, p=0)]]
-    layout = [[sg.Col(layout_info), sg.Col(layout_progress), sg.Col(layout_direction), sg.Col(layout_horn), sg.Col(layout_processor)], [layout_speed]]
+    layout_sensor = [[sg.Button('100', size=(4, 2), k="lf", pad=(0, 0), disabled=True, font=('Any', 20, 'bold')), sg.Button('100', size=(4, 2), k="rf", pad=(0, 0), disabled=True, font=('Any', 20, 'bold'))],
+                     [sg.Button('100', size=(4, 2), k="lm", pad=(0, 0), disabled=True, font=('Any', 20, 'bold')), sg.Button('100', size=(4, 2), k="rm", pad=(0, 0), disabled=True, font=('Any', 20, 'bold'))],
+                     [sg.Button('100', size=(4, 2), k="lb", pad=(0, 0), disabled=True, font=('Any', 20, 'bold')), sg.Button('100', size=(4, 2), k="rb", pad=(0, 0), disabled=True, font=('Any', 20, 'bold'))]]
+
+    layout = [[sg.Col(layout_info), sg.Col(layout_sensor), sg.Col(layout_progress), sg.Col(layout_direction), sg.Col(layout_processor)], #sg.Col(layout_horn)],
+              [layout_speed]]
 
     return sg.Window('The PySimpleGUI Element List',
                      layout,
@@ -57,11 +62,11 @@ def build_primary_window(theme=None):
                      keep_on_top=True,
                      size=(1024, 600),
                      element_justification='c')
-                     ##no_titlebar=True, )
+    ##no_titlebar=True, )
     # grab_anywhere=True)
 
-def build_secondary_window(theme=None):
 
+def build_secondary_window(theme=None):
     gauge_size = (200, 100)
     layout_speed = [
         [sg.Graph(gauge_size, (-gauge_size[0] // 2, 0), (gauge_size[0] // 2, gauge_size[1]), key='-SpeedGauge-')],
@@ -104,12 +109,13 @@ def build_secondary_window(theme=None):
                      layout,
                      finalize=True,
                      right_click_menu=sg.MENU_RIGHT_CLICK_EDITME_VER_EXIT,
-                     keep_on_top=True,)
-                     ##no_titlebar=True, )
+                     keep_on_top=True, )
+    ##no_titlebar=True, )
     # grab_anywhere=True)
 
 window_primary = build_primary_window('Dark')
 # window.Maximize()
+
 
 speed_gauge = Gauge.Gauge(pointer_color='red', clock_color=sg.theme_text_color(),
                           major_tick_color=sg.theme_text_color(),
@@ -117,7 +123,7 @@ speed_gauge = Gauge.Gauge(pointer_color='red', clock_color=sg.theme_text_color()
                           pointer_outer_color=sg.theme_text_color(),
                           major_tick_start_radius=160,
                           minor_tick_start_radius=160, minor_tick_stop_radius=200, major_tick_stop_radius=200,
-                          major_tick_step=(180//5),
+                          major_tick_step=(180 // 5),
                           clock_radius=200, pointer_line_width=3, pointer_inner_radius=10, pointer_outer_radius=200,
                           graph_elem=window_primary['-SpeedGauge-'])
 
@@ -169,22 +175,37 @@ Possibly Moving to Arduino
     
     - Horn Pin 19
 """
-forwardVoltageReadPin = 23
-reverseVoltageReadPin = 24
-forwardControlRelayPin = 9
-reverseControlRelayPin = 10
 
-shiftSolenoidHighPin = 11
-shiftSolenoidLowPin = 25
 
-hornControlRelayPin = 19
+forwardVoltageReadPin = None
+reverseVoltageReadPin = None
+forwardControlRelayPin = None
+reverseControlRelayPin = None
+shiftSolenoidHighPin = None
+shiftSolenoidLowPin = None
+hornControlRelayPin = None
+
+battery_shunt = None
+motor_shunt = None
+
 
 #arduino_interface = ArduinoInterface('/dev/ttyACM0')
+arduino_interface = ArduinoInterface('COM3')
 
 debug = True
 
 if not debug:
     import RPi.GPIO as GPIO
+
+    forwardVoltageReadPin = 23
+    reverseVoltageReadPin = 24
+    forwardControlRelayPin = 9
+    reverseControlRelayPin = 10
+
+    shiftSolenoidHighPin = 11
+    shiftSolenoidLowPin = 25
+
+    hornControlRelayPin = 19
 
     # Setup GPIO Pins
     GPIO.setmode(GPIO.BOARD)
@@ -207,11 +228,15 @@ if not debug:
     battery_shunt = Shunt()
     motor_shunt = Shunt(address=0x41)
 
+
 # Shifting Function
 # True - High
 # False - Low
 # None - Not set
 def shift(value):
+    if (shiftSolenoidLowPin is None) or (shiftSolenoidHighPin is None):
+        return
+
     if value is None:
         GPIO.output(shiftSolenoidLowPin, GPIO.LOW)
         GPIO.output(shiftSolenoidHighPin, GPIO.LOW)
@@ -223,6 +248,47 @@ def shift(value):
         GPIO.output(shiftSolenoidHighPin, GPIO.LOW)
 
 
+# Finds direction of manual forward reverse
+# True  - Forward
+# False - Reverse
+# None  - Unknown
+def manual_direction():
+    if (forwardVoltageReadPin is None) or (reverseVoltageReadPin is None):
+        return None
+
+    if GPIO.input(forwardVoltageReadPin):
+        return True
+    elif GPIO.input(reverseVoltageReadPin):
+        return False
+    else:
+        return None
+
+
+def set_software_direction(direction):
+    if (forwardControlRelayPin is None) or (reverseControlRelayPin is None):
+        return
+
+    if direction is None:
+        GPIO.output(forwardControlRelayPin, GPIO.LOW)
+        GPIO.output(reverseControlRelayPin, GPIO.LOW)
+    elif direction:
+        GPIO.output(forwardControlRelayPin, GPIO.HIGH)
+        GPIO.output(reverseControlRelayPin, GPIO.LOW)
+    else:
+        GPIO.output(forwardControlRelayPin, GPIO.LOW)
+        GPIO.output(reverseControlRelayPin, GPIO.HIGH)
+
+def get_distance_color(distance):
+    if distance == 0:
+        return 'green'
+    elif distance < 15:
+        return 'red'
+    elif distance < 50:
+        return 'yellow'
+    else:
+        return 'green'
+
+
 last_loop_time = time.time_ns()
 last_time = time.time()
 
@@ -230,104 +296,107 @@ update_period = 0.1
 
 current_speed = 0
 
-# 0 - Unknown/Unset
-# 1 - Force Forward
-# 2 - Force Reverse
-# 3 - Electric Forward
-# 4 - Electric Reverse
-kartDirectionState = 0
+current_direction_reading = False
+
+mixer.init()
+alert=mixer.Sound('beep.wav')
 
 # True - Horn On
 # False - Horn Off
 kartHornState = False
 
-# True - Hall Effect High
-# False - Hall Effect Low
-kartSpeedHallEffectState = False
-
 while True:
     event, values = window_primary.read(timeout=0)
 
     if time.time() - last_time > update_period:
-        if not debug:
 
+        # Update all the sensor values
+
+        if motor_shunt is not None:
             window_primary["-Motor-AMP-Progress-"].update(motor_shunt.current())
             window_primary["-Motor-AMP-"].update(motor_shunt.current())
             window_primary["-Motor-V-"].update(motor_shunt.voltage())
 
+        if battery_shunt is not None:
             window_primary["-Battery-Percent-Progress-"].update(battery_shunt.voltage())
             window_primary["-Battery-AMP-"].update(battery_shunt.current())
             window_primary["-Battery-V-"].update(battery_shunt.voltage())
 
-            if kartHornState:
-                GPIO.output(hornControlRelayPin, GPIO.LOW)
-                kartHornState = False
+        if kartHornState and hornControlRelayPin is not None:
+            GPIO.output(hornControlRelayPin, GPIO.LOW)
+            kartHornState = False
 
-            if event == "-Horn-":
-                GPIO.output(hornControlRelayPin, GPIO.HIGH)
-                kartHornState = True
+        if event == "-Horn-" and hornControlRelayPin is not None:
+            GPIO.output(hornControlRelayPin, GPIO.HIGH)
+            kartHornState = True
 
-            window_primary["-SpeedGauge-Text-"].update(str(int(arduino_interface.get_speed())) + "MPH")
-            speed_gauge.change(degree=((arduino_interface.get_speed() / 40.0) * 180))
+        window_primary["-SpeedGauge-Text-"].update(str(int(arduino_interface.get_speed())) + "MPH")
+        speed_gauge.change(degree=((arduino_interface.get_speed() / 40.0) * 180))
 
-        window_primary["-SpeedGauge-Text-"].update(str(current_speed) + " MPH")
-        speed_gauge.change(degree=(current_speed / 40) * 180.0)
+        distances = arduino_interface.get_sensor_distances()
+        if len(distances) > 5:
+            window_primary["lf"].update(distances[0], disabled_button_color=('black', get_distance_color(distances[0])), button_color=get_distance_color(distances[0]))
+            window_primary["lm"].update(distances[1], disabled_button_color=('black', get_distance_color(distances[1])), button_color=get_distance_color(distances[1]))
+            window_primary["lb"].update(distances[2], disabled_button_color=('black', get_distance_color(distances[2])), button_color=get_distance_color(distances[2]))
 
-        current_speed = int(((time.time_ns() - last_loop_time) / 1_000_000) * 20)
+            window_primary["rf"].update(distances[3], disabled_button_color=('black', get_distance_color(distances[3])), button_color=get_distance_color(distances[3]))
+            window_primary["rm"].update(distances[4], disabled_button_color=('black', get_distance_color(distances[4])), button_color=get_distance_color(distances[4]))
+            window_primary["rb"].update(distances[5], disabled_button_color=('black', get_distance_color(distances[5])), button_color=get_distance_color(distances[5]))
 
-        if current_speed > 40:
-            current_speed = 0
+            for distance in distances:
+                if 15 > distance > 0 and not mixer.get_busy():
+                    alert.play()
 
         window_primary["-Loop-Time-"].update((time.time_ns() - last_loop_time) / 1_000_000)
 
         last_time = time.time()
 
+
+        # Check for the manual direction change
+        current_direction_reading = manual_direction()
+
+    # Need to add a diode to the forward reverse
+    if current_direction_reading is None:
+        if event == "-Forward-":
+            # Update buttons to reflect a forward state
+            window_primary["-Reverse-"].update(disabled=False)
+            window_primary["-Forward-"].update(disabled=True)
+
+            # Set forward relay to be active
+            set_software_direction(True)
+        elif event == "-Reverse-":
+            # Update buttons to reflect a reverse state
+            window_primary["-Reverse-"].update(disabled=True)
+            window_primary["-Forward-"].update(disabled=False)
+
+            # Set reverse relay to be active
+            set_software_direction(False)
+    elif current_direction_reading is True:
+        # Disable both direction relays
+        set_software_direction(None)
+
+        # Set manual value to display
+        window_primary["-Reverse-"].update(disabled=False)
+        window_primary["-Forward-"].update(disabled=True)
+    elif current_direction_reading is False:
+        # Disable both direction relays
+        set_software_direction(None)
+
+        # Set manual value to display
+        window_primary["-Reverse-"].update(disabled=True)
+        window_primary["-Forward-"].update(disabled=False)
+
     # sg.Print(event, values)
     if event == sg.WIN_CLOSED or event == 'Exit':
         break
 
-    if not debug:
+    if battery_shunt is not None:
         battery_shunt.update()
+
+    if motor_shunt is not None:
         motor_shunt.update()
 
-        forceForwardKartDirection = GPIO.input(forwardVoltageReadPin)
-        forceReverseKartDirection = GPIO.input(reverseVoltageReadPin)
-
-        if (kartDirectionState == 1 or kartDirectionState == 2) and not forceForwardKartDirection and not forceReverseKartDirection:
-            kartDirectionState = 0
-            window_primary["-Reverse-"].update(disabled=False)
-            window_primary["-Forward-"].update(disabled=False)
-
-        if forceForwardKartDirection and kartDirectionState != 1:
-            kartDirectionState = 1
-            GPIO.output(forwardControlRelayPin, GPIO.LOW)
-            GPIO.output(reverseControlRelayPin, GPIO.LOW)
-
-            window_primary["-Reverse-"].update(disabled=False)
-            window_primary["-Forward-"].update(disabled=True)
-        elif forceReverseKartDirection and kartDirectionState != 2:
-            kartDirectionState = 2
-            GPIO.output(forwardControlRelayPin, GPIO.LOW)
-            GPIO.output(reverseControlRelayPin, GPIO.LOW)
-
-            window_primary["-Reverse-"].update(disabled=True)
-            window_primary["-Forward-"].update(disabled=False)
-        elif event == "-Reverse-" and kartDirectionState != 2 and kartDirectionState != 1 and kartDirectionState != 4:
-            kartDirectionState = 4
-            GPIO.output(reverseControlRelayPin, GPIO.HIGH)
-            GPIO.output(forwardControlRelayPin, GPIO.LOW)
-
-            window_primary["-Reverse-"].update(disabled=True)
-            window_primary["-Forward-"].update(disabled=False)
-        elif event == "-Forward-" and kartDirectionState != 2 and kartDirectionState != 1 and kartDirectionState != 3:
-            kartDirectionState = 3
-            GPIO.output(reverseControlRelayPin, GPIO.LOW)
-            GPIO.output(forwardControlRelayPin, GPIO.HIGH)
-
-            window_primary["-Reverse-"].update(disabled=False)
-            window_primary["-Forward-"].update(disabled=True)
-
     last_loop_time = time.time_ns()
-
+    arduino_interface.update()
 
 window_primary.close()
