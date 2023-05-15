@@ -7,38 +7,53 @@ class Shunt:
 
     def __init__(self, resistance_ohm=0.00075, max_amps=100, address=0x40):
         self.ina = INA219(resistance_ohm, max_amps, address=address)
-        self.ina.configure(self.ina.RANGE_32V, self.ina.GAIN_2_80MV)
-        self.voltage = 0
-        self.power = 0
-        self.current = 0
-        self.shunt_voltage = 0
+        self.ina.configure(self.ina.RANGE_32V, self.ina.GAIN_AUTO)
+        self.voltage_val = 0
+        self.power_val = 0
+        self.current_val = 0
+        self.shunt_voltage_val = 0
         self.Ah = 0
         self.last_update = time()
 
     def voltage(self):
-        return self.voltage
+        return self.voltage_val
 
     def power(self):
-        return self.power
+        return self.power_val
 
     def current(self):
-        return self.current
+        return self.current_val
 
     def shunt_voltage(self):
-        return self.shunt_voltage
+        return self.shunt_voltage_val
 
     def resistance(self):
-        return self.voltage / self.current
+        return self.voltage_val / self.current_val
 
     def Ah(self):
         return self.Ah
 
     def update(self):
-        self.voltage = self.ina.voltage()
-        self.power = self.ina.power()
-        self.current = self.ina.current()
-        self.shunt_voltage = self.ina.shunt_voltage()
+        try:
+            self.voltage_val = self.ina.supply_voltage()
+        except DeviceRangeError:
+            self.voltage_val = 24.0
 
-        self.Ah += self.current * ((time() - self.last_update) / (60 * 60))
+        try:
+            self.current_val = self.ina.current() / 1000.0
+        except DeviceRangeError:
+            self.current_val = 100.0
+
+        try:
+            self.shunt_voltage_val = self.ina.shunt_voltage()
+        except DeviceRangeError:
+            self.shunt_voltage_val = 100.0
+
+        try:
+            self.power_val = self.ina.power() / 1000.0
+        except DeviceRangeError:
+            self.power_val = 24 * 100.0
+
+        self.Ah += self.current_val * ((time() - self.last_update) / (60.0 * 60.0))
 
         self.last_update = time()
