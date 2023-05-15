@@ -308,9 +308,9 @@ while True:
 
         # Update all the sensor values
         if motor_shunt is not None:
-            window_primary["-Motor-AMP-Progress-"].update(motor_shunt.current())
-            window_primary["-Motor-AMP-"].update(motor_shunt.current())
-            window_primary["-Motor-V-"].update(motor_shunt.voltage())
+            window_primary["-Motor-AMP-Progress-"].update(int(motor_shunt.current()))
+            window_primary["-Motor-AMP-"].update(int(motor_shunt.current()))
+            window_primary["-Motor-V-"].update(int(motor_shunt.voltage()))
 
         if battery_shunt is not None:
             window_primary["-Battery-Percent-Progress-"].update(battery_shunt.voltage())
